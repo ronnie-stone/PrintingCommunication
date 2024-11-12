@@ -27,11 +27,11 @@ class printer:
     # global variable with the printer commands. Just a good way to define 
     gcode_list = {"M291": 'M291 P"Waiting for permission to continue" S3', # pauses printer to wait to be allowed to start again
                   "M292": 'M292',       # Unpauses M291 command
-                  "M23": 'M23',         # Selects sd card file for printing
-                  "M24": 'M24',         # Starts or Resumes Print from an sd card
-                  "M25": 'M25',         # Pause a print from an sd card - runs pause.g macro.
+                  "pick": 'M23',         # Selects sd card file for printing
+                  "resume": 'M24',         # Starts or Resumes Print from an sd card
+                  "pause": 'M25',         # Pause a print from an sd card - runs pause.g macro.
                   "M226": 'M226',       # Never Used
-                  "M104": 'M104 S240',  # Sets the extruder temperature to 240C
+                  "heat": 'M104 S250',  # Sets the extruder temperature to 250C
                   "M408": 'M408 S0'}    # Returns the status of the printer in json style. More info: https://reprap.org/wiki/G-code#M408:_Report_JSON-style_response
     
     
@@ -52,6 +52,7 @@ class printer:
         self.PrinterOffset = (PrinterOffset[0], 1 * PrinterOffset[1])
         self.PrinterDimensions = PrinterDimensions
         self.IP = IP
+        self.status = False
         
         self.PrinterTransformation =  transforms.Affine2D().rotate_deg_around(self.OriginLocation[0], self.OriginLocation[1], self.OriginLocation[2]) + self.ax.transData
         self.PrinterCoordTranslation = transforms.Affine2D().translate(self.OriginLocation[0], self.OriginLocation[1]).rotate_deg_around(self.OriginLocation[0], self.OriginLocation[1], self.OriginLocation[2])+ self.ax.transData
@@ -264,7 +265,6 @@ class printer:
         x, y = polygon1.exterior.xy
         
         self.ax.fill(x, y, alpha=0.5, fc='red', label= self.PrinterName)
-        # ax.fill(x, y, alpha=0.5, fc='red', label= self.PrinterName)
 
     
     """
@@ -274,15 +274,15 @@ class printer:
         """
         This is for getting the target end position from the printer
         """
-        return self.request_status()["coords"]["xyz"]
-        #return (0,300,0)
+        # return self.request_status()["coords"]["xyz"]
+        return (0,300,0)
     
     def getCurrentPosition(self):
         """
         This is for getting the current position from the printer
         """
-        return self.request_status()["coords"]["machine"]
-        # return (300,300,0)
+        # return self.request_status()["coords"]["machine"]
+        return (300,300,0)
     
     def request_status(self):
     	base_request = ("http://{0}:{1}/rr_status?type=0").format(self.IP,"")
@@ -292,11 +292,28 @@ class printer:
         """
         DuetWebAPI?????
         """
-        base_request = ("http://{0}:{1}/rr_gcode?gcode=" + self.gcode_list[com] + self.filename).format(self.IP,"")
+        base_request = ("http://{0}:{1}/rr_gcode?gcode=" + self.gcode_list[com] + filename).format(self.IP,"")
         r = requests.get(base_request)
         return r
+    
+    def pause(self):
+        self.issue_gcode("pause")
+        self.status = False
         
+    def resume(self):
+        self.issue_gcode("resume")
+        self.status = True
         
+    def pickFile(self, filename):
+        self.issue_gcode("pick", filename)
+    
+    def preheat(self):
+        self.issue_gcode("heat")
+        
+    def getStatus(self):
+        return self.status
+        
+    
         
 class envelope:
     def __init__(self, printers):
@@ -421,26 +438,62 @@ class envelope:
         FINISH IMPLEMENTATION
         Determines the interesctions between all of the polygons from the printer motion.
         """
-        for i in range(len(self.printerList)):
+        intersectionList = []
+        
+        for printer1 in self.printerList.copy():
             
-            currentPoly = self.printerList[i].getLiveAnalysisPolygon()
+            otherPs = self.printerList.copy()
+            otherPs.remove(printer1)
             
-            a = self.printerList.copy()
+            poly1 = printer1.getLiveAnalysisPolygon()
             
-            a.pop(i)
             
-            otherPs = a
-            
-            for otherP in otherPs:
-                OtherPoly = otherP.getLiveAnalysisPolygon()
-                if currentPoly.intersects(OtherPoly):
-                    print("intersection!! " + self.printerList[i].getName() + " and " + otherP.getName())
+            for printer2 in otherPs: # iterate through all the other printers
+                poly2 = printer2.getLiveAnalysisPolygon() #get the polygon from the printer
+                
+                if poly1.intersects(poly2) and (printer1 not in intersectionList) and (printer2 not in intersectionList):
+                    intersectionList.append(printer2)
                     
-    def run(self):
-        pass
+        
+        
+        
+        for a in intersectionList:
+            print(a.getName())
+        return intersectionList
     
+    def prepare(self, filename = ""):
+        """
+        Filename assumes that the files on the printers are in the format "filename_(number)"
+        number is the printer's number in reference to the list which was used to initialize the printers
+        """
+        for i in range(len(self.printerList)):
+            pr = self.printerList[i]
+            pr.preheat()
+            pr.pickFile(filename +"_"+str(i))
+            
+    def startPrints(self):
+        """
+        Should be be run to start the prints at the same time.
+        Need to make sure the hotends are warm before this runs though
+        """
+        for pr in self.printerList:
+            pr.resume()
+            
+    def checkingAlgorithm(self):
+        """
+        Need to test this method, but it should work...
+        """
+        intersectionList = self.getIntersections()
+        for pr in intersectionList:
+            pr.pause()
+            
+        intersectionList = self.getIntersections()
+        for pr in self.printerList():
+            if pr.getStatus() == False and pr not in intersectionList:
+                pr.resume()
+                    
+            
 if __name__ == "__main__":
-    # e = envelope([])
     
     # fig, ax = plt.subplots()
     fig2, ax2 = plt.subplots()
@@ -448,7 +501,7 @@ if __name__ == "__main__":
     # ax2.set_xlim(-200, 1000)
     # ax2.set_ylim(-100, 1000)
     
-    p = printer((0,0,0), (150, -35), "192.168.0.17", ax2)
+    p = printer((0,0,0), (150, -35), "192.168.0.17", ax2, PrinterName = "printer 1")
     p.plot(ax2)
     
     # print(p.getLocations((0,0,0)))
@@ -480,8 +533,8 @@ if __name__ == "__main__":
     
     
     
-    p2 = printer((0,600,270), (150, -35), "IP3", ax2)
-    
+    p2 = printer((0,600,270), (150, -35), "IP3", ax2, PrinterName = "printer 2")
+    p2.plot(ax2)
     # p2.plot(ax2)
     # print(p.getLocations((0,0,0)))
     
@@ -509,8 +562,8 @@ if __name__ == "__main__":
     
     
     
-    p3 = printer((300,900,180), (150, -35), "IP3", ax2)
-    
+    p3 = printer((300,900,180), (150, -35), "IP3", ax2, PrinterName = "printer 3")
+    p3.plot(ax2)
     # print(p.getLocations((0,0,0)))
     
     # locationI2 = (300,300,0)
@@ -543,7 +596,8 @@ if __name__ == "__main__":
     """
     Full Envelope testing
     """
-    # # # e = envelope([p, p2, p3])
+    e = envelope([p, p2, p3])
+    e.getIntersections()
     
     
     # printers = [[(0,0,0), (150, -35), "IP1", "Printer 1"],
