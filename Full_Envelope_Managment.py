@@ -52,7 +52,9 @@ class printer:
         self.PrinterOffset = (PrinterOffset[0], 1 * PrinterOffset[1])
         self.PrinterDimensions = PrinterDimensions
         self.IP = IP
+        
         self.status = False
+        self.Stored_Resume_Point = [0,0,0]
         
         self.PrinterTransformation =  transforms.Affine2D().rotate_deg_around(self.OriginLocation[0], self.OriginLocation[1], self.OriginLocation[2]) + self.ax.transData
         self.PrinterCoordTranslation = transforms.Affine2D().translate(self.OriginLocation[0], self.OriginLocation[1]).rotate_deg_around(self.OriginLocation[0], self.OriginLocation[1], self.OriginLocation[2])+ self.ax.transData
@@ -274,8 +276,14 @@ class printer:
         """
         This is for getting the target end position from the printer
         """
-        # return self.request_status()["coords"]["xyz"]
-        return (0,300,0)
+        
+        #Status false means the printer is paused. Otherwise it just return the target position
+        if self.status == False:
+            return self.Stored_Resume_Point
+        else:
+            # return self.request_status()["coords"]["xyz"]
+            return (0,300,0)
+        
     
     def getCurrentPosition(self):
         """
@@ -289,18 +297,17 @@ class printer:
     	return requests.get(base_request).json()
     
     def issue_gcode(self, com, filename=""):
-        """
-        DuetWebAPI?????
-        """
         base_request = ("http://{0}:{1}/rr_gcode?gcode=" + self.gcode_list[com] + filename).format(self.IP,"")
         r = requests.get(base_request)
         return r
     
     def pause(self):
+        self.Stored_Resume_Point = self.getCurrentPosition()
         self.issue_gcode("pause")
         self.status = False
         
     def resume(self):
+        self.Stored_Resume_Point = []
         self.issue_gcode("resume")
         self.status = True
         
