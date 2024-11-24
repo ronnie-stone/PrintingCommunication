@@ -91,7 +91,7 @@ def create_rectangle(p1, p2, width):
 def check_collision(n_scaras, buffer_size=10):
     """
     Check for collisions between n SCARA robots using buffered rectangular links.
-    
+
     :param n_scaras: List of dictionaries, each containing:
                      - 'local_origin': (X, Y)
                      - 'robot_base': (X, Y)
@@ -116,12 +116,20 @@ def check_collision(n_scaras, buffer_size=10):
         # Create rectangles for each link and apply buffer
         link1 = create_rectangle(positions[0], positions[1], width=30).buffer(buffer_size)
         link2 = create_rectangle(positions[1], positions[2], width=30).buffer(buffer_size)
-        link_rectangles.extend([link1, link2])
+        link_rectangles.append((link1, link2))
 
-    # Check for collisions between all buffered rectangles
+    # Check for collisions between rectangles from different SCARA arms
     for i in range(len(link_rectangles)):
         for j in range(i + 1, len(link_rectangles)):
-            if link_rectangles[i].intersects(link_rectangles[j]):
+            # Extract the two sets of rectangles
+            arm1_link1, arm1_link2 = link_rectangles[i]
+            arm2_link1, arm2_link2 = link_rectangles[j]
+
+            # Check all combinations of rectangles between the two SCARA arms
+            if arm1_link1.intersects(arm2_link1) or \
+               arm1_link1.intersects(arm2_link2) or \
+               arm1_link2.intersects(arm2_link1) or \
+               arm1_link2.intersects(arm2_link2):
                 return True  # Collision detected
 
     return False  # No collision detected
@@ -184,23 +192,16 @@ if __name__ == "__main__":
             'local_origin': (900, 0),
             'robot_base': (950, 150),
             'theta_local': 90,
-            'end_effector_local': (150, 150),
+            'end_effector_local': (290, 10),
             'arm_lengths': (220, 220)
         },
         {
             'local_origin': (600, 300),
             'robot_base': (450, 350),
             'theta_local': 180,
-            'end_effector_local': (-200, 150),
+            'end_effector_local': (290, 10),
             'arm_lengths': (220, 220)
         },
-        {
-            'local_origin': (0, 300),
-            'robot_base': (-50, 150),
-            'theta_local': -90,
-            'end_effector_local': (150, 150),
-            'arm_lengths': (220, 220)
-        }
     ]
 
     start_time = time.time()
@@ -211,4 +212,4 @@ if __name__ == "__main__":
     print("Collision Detected:" if collision else "No Collision")
 
     # Plot SCARA robots with buffers
-    # plot_scaras(n_scaras, buffer_size=10)
+    plot_scaras(n_scaras, buffer_size=10)
