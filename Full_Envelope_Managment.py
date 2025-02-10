@@ -15,6 +15,8 @@ from shapely.geometry import Polygon
 from itertools import combinations
 from shapely.ops import unary_union
 
+from scipy.spatial  import ConvexHull
+
 #HTTP requests
 import requests
 
@@ -78,13 +80,16 @@ class printer:
     def getAx(self):
         return self.ax
     
-    def getBuildSurfaceRectangle(self):
+    def getBuildSurfaceRectangle(self, transformation = None):
         """
         Returns the print envelope of the printer as a recangle object
         """
+        if (transformation == None):
+            transformation = self.PrinterTransformation
+            
         return plt.Rectangle((self.OriginLocation[0],self.OriginLocation[1]),
                               self.PrinterDimensions, self.PrinterDimensions , 
-                              linewidth=2, edgecolor='r', facecolor='none', transform=self.PrinterTransformation)
+                              linewidth=2, edgecolor='r', facecolor='none', transform=transformation)
     
     def getPrinterPoint(self):
         """
@@ -209,8 +214,6 @@ class printer:
         
         return combined_polygon
     
-    
-    
     def getPolygon(self, xyzI, xyzF):
         """
         *****INTERNAL FUNCTION*****
@@ -268,6 +271,66 @@ class printer:
         
         self.ax.fill(x, y, alpha=0.5, fc='red', label= self.PrinterName)
 
+    def getMaxMotion(self, maxTravelPlot = plt.figure()):
+        """
+        IN PROGRES************************
+        Pinter Max Travel
+        """
+        ax1 = maxTravelPlot.add_subplot(111)
+        # fig, ax = maxTravelPlot.subplots()
+        
+        PrinterTransformation =  transforms.Affine2D().rotate_deg_around(self.OriginLocation[0], self.OriginLocation[1], self.OriginLocation[2]) + ax1.transData
+        PrinterCoordTranslation = transforms.Affine2D().translate(self.OriginLocation[0], self.OriginLocation[1]).rotate_deg_around(self.OriginLocation[0], self.OriginLocation[1], self.OriginLocation[2])+ ax1.transData
+        
+        baseLocation = plt.plot(self.getPrinterPoint()[0], self.getPrinterPoint()[1], self.Point, transform = PrinterTransformation)
+        ax1.add_patch(self.getBuildSurfaceRectangle(PrinterTransformation))
+        
+        
+        # plt.set_xlim(minX-30, maxX+30)
+        # self.ax.set_ylim(minY-150, maxY+150)
+        
+        def calculate_forward_kinematics(theta1, theta2, l1, l2):
+            """Calculates the end-effector position for given joint angles."""
+            x = l1 * np.cos(theta1) + l2 * np.cos(theta1 + theta2)
+            y = l1 * np.sin(theta1) + l2 * np.sin(theta1 + theta2)
+            return x, y
+        
+        theta1_range = np.linspace(-0.25*np.pi, 0.75 * np.pi, 200)  # Adjust resolution as needed
+        theta2_range = np.linspace(0, 1 * np.pi, 200)
+    
+        x_values = []
+        y_values = []
+    
+        for theta1 in theta1_range:
+            for theta2 in theta2_range:
+                x, y = calculate_forward_kinematics(theta1, theta2, self.armOneLength, self.armTwoLength)
+                x_values.append(x)
+                y_values.append(y)
+        
+        points = np.array(list(zip(x_values, y_values)))
+        hull = ConvexHull(points)
+    
+        boundary_x = points[hull.vertices, 0]
+        boundary_y = points[hull.vertices, 1]
+        
+        plt.figure(figsize=(6, 6))
+        plt.scatter(x_values, y_values, s=1, label="Reachable Points")  # Optional: Show all reachable points
+        plt.plot(boundary_x, boundary_y, 'r-', lw=2, label="Workspace Boundary") # Plot the boundary
+        plt.plot(0,0, self.Point, color = "red")
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("Workspace of Double-Jointed Arm")
+        plt.grid(True)
+        plt.legend()
+        # plt.axis('equal') # Important for visualizing the workspace correctly
+        plt.show()
+
+        
+        
+        # plt.show()
+        
+        
+        
     
     """
     Printer Network Functions
@@ -440,6 +503,14 @@ class envelope:
         for pr in self.printerList:
             pr.plot(self.ax)
     
+    def findKinematicOverlaps(self):
+        """
+        Find the intersection regions of the printer arms based on kinematic constraints
+        """
+        
+        
+    
+    
     def getIntersections(self):
         """
         FINISH IMPLEMENTATION
@@ -605,6 +676,7 @@ if __name__ == "__main__":
     """
     e = envelope([p, p2, p3])
     e.getIntersections()
+
     
     
     # printers = [[(0,0,0), (150, -35), "IP1", "Printer 1"],
