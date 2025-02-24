@@ -271,7 +271,7 @@ class printer:
         
         self.ax.fill(x, y, alpha=0.5, fc='red', label= self.PrinterName)
 
-    def getMaxMotion(self, maxTravelPlot = plt.figure()):
+    def getArmLocationAtPoint(self, maxTravelPlot = plt.figure()):
         """
         IN PROGRES************************
         Pinter Max Travel
